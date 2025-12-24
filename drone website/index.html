@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone ARM B7</title>
+    <!-- Favicon: Fixed path with %20 for space character -->
+    <link rel="icon" type="image/png" href="DRONE%20Logo.png">
+    <link rel="shortcut icon" type="image/png" href="DRONE%20Logo.png">
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Three.js for 3D Simulation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* Apply Inter font */
+        body {
+            font-family: 'Inter', sans-serif;
+            scroll-behavior: smooth;
+            background-color: #f7fafc;
+            overflow-x: hidden;
+        }
+
+        /* === INTRO SPLASH SCREEN STYLES === */
+        #intro-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #111827; /* Dark background */
+            z-index: 99999; /* Higher than everything else */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 1s ease-out, visibility 1s;
+        }
+
+        #intro-screen.hidden-screen {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        #intro-screen img {
+            max-width: 90%;
+            max-height: 80%;
+            border-radius: 1rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: introZoom 3s ease-out forwards;
+        }
+
+        @keyframes introZoom {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1.05); opacity: 1; }
+        }
+
+        /* === DELIVERY ANIMATION STYLES === */
+        /* GLOBAL DURATION VARIABLE */
+        :root {
+            --anim-duration: 22s;
+        }
+
+        .delivery-scene {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            height: 200px;
+            z-index: 100;
+            pointer-events: none; /* Allows clicking through the animation */
+        }
+
+        .person { position: absolute; bottom: 0; width: 80px; height: 100px; opacity: 0; }
+        
+        /* Message Bubbles */
+        .message-bubble {
+            position: absolute;
+            bottom: 120px; /* Higher up to be visible */
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: 2px solid #4F46E5; /* Indigo border to pop */
+            font-size: 14px;
+            font-weight: bold;
+            color: #1f2937;
+            white-space: nowrap;
+            opacity: 0;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            z-index: 200; /* Very high z-index */
+            transform-style: preserve-3d; 
+        }
+        
+        .message-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 6px 6px 0;
+            border-style: solid;
+            border-color: #4F46E5 transparent transparent transparent;
+        }
+
+        /* --- PARCEL TRANSFER ANIMATIONS --- */
+        /* Sender has it initially, then loses it */
+        .sender-parcel {
+            fill: #F59E0B; stroke: #B45309; stroke-width: 0.5;
+            animation: senderParcelAnim var(--anim-duration) linear infinite;
+        }
+        @keyframes senderParcelAnim {
+            0%, 22% { opacity: 1; } /* On bike */
+            22.1%, 100% { opacity: 0; } /* Taken by drone */
+        }
+
+        /* Drone gets it, flies, then drops it */
+        .drone-parcel {
+            fill: #F59E0B; stroke: #B45309; stroke-width: 0.5;
+            animation: droneParcelAnim var(--anim-duration) linear infinite;
+        }
+        @keyframes droneParcelAnim {
+            0%, 22% { opacity: 0; } /* Empty while arriving */
+            22.1%, 72% { opacity: 1; } /* Carrying */
+            72.1%, 100% { opacity: 0; } /* Delivered */
+        }
+
+        /* Receiver gets it at end */
+        .receiver-parcel {
+            fill: #F59E0B; stroke: #B45309; stroke-width: 0.5;
+            animation: receiverParcelAnim var(--anim-duration) linear infinite;
+        }
+        @keyframes receiverParcelAnim {
+            0%, 72% { opacity: 0; } /* Waiting empty handed */
+            72.1%, 100% { opacity: 1; } /* Has parcel */
+        }
+
+        /* --- SENDER (CYCLIST) ANIMATIONS --- */
+        .sender { 
+            left: -150px; 
+            animation: senderCyclePath var(--anim-duration) linear infinite; 
+        }
+
+        @keyframes senderCyclePath {
+            0% { left: -150px; opacity: 1; transform: scaleX(1); }
+            8% { left: 5%; opacity: 1; transform: scaleX(1); } /* Stop */
+            35% { left: 5%; opacity: 1; transform: scaleX(1); } /* Wait */
+            36% { left: 5%; opacity: 1; transform: scaleX(-1); } /* Turn */
+            50% { left: -150px; opacity: 1; transform: scaleX(-1); } /* Leave */
+            100% { left: -150px; opacity: 0; }
+        }
+
+        /* Sender Message */
+        .sender .message-bubble {
+            animation: senderMsgAnim var(--anim-duration) linear infinite;
+        }
+        @keyframes senderMsgAnim {
+            0%, 8% { opacity: 0; transform: translateX(-50%) scaleX(1) translateY(10px); } 
+            10%, 33% { opacity: 1; transform: translateX(-50%) scaleX(1) translateY(0); } 
+            35%, 100% { opacity: 0; transform: translateX(-50%) scaleX(1) translateY(0); }
+        }
+
+        .bike-wheel { transform-origin: center; animation: wheelSpin 0.5s linear infinite; }
+        @keyframes wheelSpin {
+            0% { transform: rotate(0deg); }
+            8% { transform: rotate(720deg); }
+            8.1%, 35% { transform: rotate(720deg); }
+            50% { transform: rotate(0deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        .sender-leg { transform-origin: 12px 18px; animation: pedaling 0.4s linear infinite; }
+        @keyframes pedaling {
+            0% { transform: rotate(0deg) scaleY(1); }
+            8% { transform: rotate(1080deg) scaleY(1); }
+            8.1%, 35% { transform: rotate(1080deg) scaleY(1); }
+            50% { transform: rotate(0deg) scaleY(1); }
+            100% { transform: rotate(0deg) scaleY(1); }
+        }
+
+        /* --- RECEIVER ANIMATIONS --- */
+        .receiver { 
+            right: -100px; 
+            animation: receiverMove var(--anim-duration) linear infinite; 
+        }
+
+        @keyframes receiverMove {
+            0%, 40% { right: -100px; opacity: 0; }
+            55% { right: 5%; opacity: 1; }
+            80% { right: 5%; opacity: 1; }
+            90% { right: -100px; opacity: 1; }
+            100% { right: -100px; opacity: 1; }
+        }
+
+        .receiver-visual {
+            width: 100%;
+            height: 100%;
+            animation: receiverFaceDirection var(--anim-duration) linear infinite;
+            transform-origin: center;
+        }
+
+        @keyframes receiverFaceDirection {
+            0%, 80% { transform: scaleX(-1); }
+            81%, 100% { transform: scaleX(1); }
+        }
+
+        .leg { transform-origin: 12px 16px; }
+        .leg-left { animation: legSwing 0.6s ease-in-out infinite; }
+        .leg-right { animation: legSwing 0.6s ease-in-out infinite reverse; }
+
+        @keyframes legSwing {
+            0% { transform: rotate(-15deg); }
+            50% { transform: rotate(15deg); }
+            100% { transform: rotate(-15deg); }
+        }
+
+        .arm-receiver { transform-origin: 12px 10px; animation: receiverArmAction var(--anim-duration) linear infinite; }
+        @keyframes receiverArmAction {
+            0%, 65% { transform: rotate(0deg); }
+            66%, 80% { transform: rotate(-45deg); } /* Hold package */
+            81%, 100% { transform: rotate(-45deg); } /* Keep holding while leaving */
+        }
+
+        .receiver-msg { animation: receiverMsgAnim var(--anim-duration) linear infinite; }
+        @keyframes receiverMsgAnim {
+            0%, 65% { opacity: 0; transform: translateX(-50%) translateY(10px); }
+            67%, 78% { opacity: 1; transform: translateX(-50%) translateY(0); }
+            80%, 100% { opacity: 0; transform: translateX(-50%) translateY(0); }
+        }
+
+        /* --- DRONE ANIMATIONS --- */
+        .drone-wrapper {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            animation: deliveryRoute var(--anim-duration) linear infinite;
+        }
+
+        @keyframes deliveryRoute {
+            0% { left: 5%; bottom: 250px; transform: rotate(0deg); opacity: 0; } 
+            2% { opacity: 1; }
+            8% { left: 5%; bottom: 60px; transform: rotate(0deg); } 
+            30% { left: 5%; bottom: 60px; transform: rotate(0deg); } 
+            35% { left: 5%; bottom: 160px; transform: rotate(5deg); } 
+            60% { left: 85%; bottom: 160px; transform: rotate(5deg); } 
+            65% { left: 85%; bottom: 60px; transform: rotate(0deg); opacity: 1; } 
+            75% { left: 85%; bottom: 60px; opacity: 1; } 
+            80% { left: 85%; bottom: 100px; opacity: 0; } 
+            100% { opacity: 0; left: 5%; bottom: 250px; }
+        }
+
+        @keyframes propellerSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes hoverSway { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+        @keyframes payloadSwing { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+
+        .propeller { transform-origin: center; animation: propellerSpin 0.08s linear infinite; }
+        .drone-body-group { animation: hoverSway 1s ease-in-out infinite; }
+        .payload-group { transform-origin: 20px 22px; animation: payloadSwing 1s ease-in-out infinite; }
+
+        /* --- FULL PAGE FOLDER STYLES --- */
+        .full-page-view {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #ffffff;
+            z-index: 500;
+            overflow-y: auto;
+            transform: translateX(100%);
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .full-page-view.active-page {
+            transform: translateX(0);
+        }
+
+        .page-content-wrapper {
+            max-width: 64rem;
+            margin: 0 auto;
+            padding: 4rem 1.5rem;
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s ease-out 0.3s;
+        }
+
+        .full-page-view.active-page .page-content-wrapper {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* 3D View Specific */
+        #three-canvas-container {
+            width: 100%;
+            height: 60vh;
+            background: #0f172a; /* Darker slate BG */
+            border-radius: 1rem;
+            overflow: hidden;
+            position: relative;
+            cursor: crosshair; /* Indicates interaction */
+        }
+
+        /* 3D Info Tooltip */
+        #drone-info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(17, 24, 39, 0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #4F46E5;
+            max-width: 300px;
+            backdrop-filter: blur(5px);
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            pointer-events: none; /* Let clicks pass through */
+        }
+        
+        #drone-info-panel.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Loading Indicator */
+        #model-loader {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: monospace;
+            pointer-events: none;
+        }
+        
+        .code-block {
+            border-left: 4px solid #4F46E5;
+            animation: pulseBorder 2s infinite;
+        }
+        @keyframes pulseBorder { 0%, 100% { border-color: #4F46E5; } 50% { border-color: #818CF8; } }
+
+        /* Scroll Reveal */
+        .reveal { opacity: 0; transform: translateY(50px); transition: all 1s ease-out; }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- === INTRO SPLASH SCREEN === -->
+    <div id="intro-screen">
+        <img src="intro_drone.jpg" alt="Drone Intro" onerror="this.onerror=null; this.src='https://placehold.co/800x600/1e1e1e/FFF?text=Loading+Drone+ARM+B7...';">
+    </div>
+
+    <!-- === LIVE DELIVERY SCENE === -->
+    <div class="delivery-scene">
+        <!-- Sender (On Bicycle) -->
+        <div class="person sender">
+            <div class="message-bubble sender-msg">Here is your Order! 📦</div>
+            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g class="bike-wheel" style="transform-origin: 8px 25px;"><circle cx="8" cy="25" r="5" stroke="#374151" stroke-width="1.5" /><path d="M8 25 L3 25 M8 25 L13 25 M8 25 L8 20 M8 25 L8 30" stroke="#9CA3AF" stroke-width="0.5"/></g>
+                <g class="bike-wheel" style="transform-origin: 32px 25px;"><circle cx="32" cy="25" r="5" stroke="#374151" stroke-width="1.5" /><path d="M32 25 L27 25 M32 25 L37 25 M32 25 L32 20 M32 25 L32 30" stroke="#9CA3AF" stroke-width="0.5"/></g>
+                <path d="M8 25 L16 25 L22 15 L12 15 Z" stroke="#EF4444" stroke-width="1.5" fill="none"/>
+                <path d="M22 15 L32 25" stroke="#4B5563" stroke-width="1.5"/><path d="M22 15 L20 12" stroke="#4B5563" stroke-width="1.5"/><path d="M19 12 H23" stroke="#1F2937" stroke-width="1.5"/><path d="M12 15 L10 12" stroke="#4B5563" stroke-width="1.5"/><path d="M8 12 H12" stroke="#1F2937" stroke-width="2"/>
+                <rect class="sender-parcel" x="6" y="10" width="5" height="5" rx="1"/>
+                <g class="body-group"><circle cx="14" cy="7" r="3" fill="#4B5563"/><path d="M14 10 L12 18" stroke="#4B5563" stroke-width="2" stroke-linecap="round"/><path d="M13 11 L21 12" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round"/><circle cx="21" cy="12" r="1" class="skin" style="fill: #fca5a5;"/><path class="sender-leg" d="M12 18 L16 25" stroke="#4B5563" stroke-width="2" stroke-linecap="round"/></g>
+            </svg>
+        </div>
+
+        <!-- The Drone -->
+        <div class="drone-wrapper">
+            <svg width="100%" height="100%" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g class="payload-group" style="transform-origin: 20px 22px;">
+                    <line x1="20" y1="20" x2="20" y2="28" stroke="#374151" stroke-width="0.5"/>
+                    <path d="M18 28 H22" stroke="#374151" stroke-width="1" stroke-linecap="round"/>
+                    <rect class="drone-parcel" x="17.5" y="28" width="5" height="5" rx="1"/>
+                </g>
+                <g class="drone-body-group">
+                    <path d="M14 22 L14 24 M26 22 L26 24" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round"/><path d="M12 24 H16 M24 24 H28" stroke="#4B5563" stroke-width="1.5" stroke-linecap="round"/><ellipse cx="20" cy="20" rx="6" ry="2.5" fill="#4F46E5"/> <path d="M14 20 Q20 23 26 20" fill="#312E81" opacity="0.3"/> <path d="M20 20 L10 12" stroke="#6B7280" stroke-width="1.5"/><path d="M20 20 L30 12" stroke="#6B7280" stroke-width="1.5"/><path d="M20 20 L10 28" stroke="#6B7280" stroke-width="1.5"/><path d="M20 20 L30 28" stroke="#6B7280" stroke-width="1.5"/><circle cx="10" cy="12" r="1.5" fill="#374151"/><circle cx="30" cy="12" r="1.5" fill="#374151"/><circle cx="10" cy="28" r="1.5" fill="#374151"/><circle cx="30" cy="28" r="1.5" fill="#374151"/><g class="propeller" style="transform-origin: 10px 12px;"><ellipse cx="10" cy="12" rx="5" ry="0.5" fill="#4F46E5" opacity="0.7"/><ellipse cx="10" cy="12" rx="0.5" ry="5" fill="#4F46E5" opacity="0.7"/></g><g class="propeller" style="transform-origin: 30px 12px;"><ellipse cx="30" cy="12" rx="5" ry="0.5" fill="#4F46E5" opacity="0.7"/><ellipse cx="30" cy="12" rx="0.5" ry="5" fill="#4F46E5" opacity="0.7"/></g><g class="propeller" style="transform-origin: 10px 28px;"><ellipse cx="10" cy="28" rx="5" ry="0.5" fill="#4F46E5" opacity="0.7"/><ellipse cx="10" cy="28" rx="0.5" ry="5" fill="#4F46E5" opacity="0.7"/></g><g class="propeller" style="transform-origin: 30px 28px;"><ellipse cx="30" cy="28" rx="5" ry="0.5" fill="#4F46E5" opacity="0.7"/><ellipse cx="30" cy="28" rx="0.5" ry="5" fill="#4F46E5" opacity="0.7"/></g>
+                </g>
+            </svg>
+        </div>
+
+        <!-- Receiver -->
+        <div class="person receiver">
+            <div class="message-bubble receiver-msg">Thank You! 🙏</div>
+            <div class="receiver-visual">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path class="leg leg-left" d="M12 16 L10 23" stroke="#4B5563" stroke-width="2" stroke-linecap="round"/>
+                    <path class="leg leg-right" d="M12 16 L14 23" stroke="#4B5563" stroke-width="2" stroke-linecap="round"/>
+                    <g class="body-group">
+                        <circle cx="12" cy="5" r="3" fill="#4B5563"/>
+                        <path d="M12 8 V16" stroke="#4B5563" stroke-width="2" stroke-linecap="round"/>
+                        <g class="arm-receiver">
+                            <path d="M12 10 L12 15" stroke="#4B5563" stroke-width="2" stroke-linecap="round"/>
+                            <circle cx="12" cy="16" r="1.5" class="skin" style="fill: #fca5a5;"/>
+                            <rect class="receiver-parcel" x="10" y="14" width="4" height="4" rx="1"/>
+                        </g>
+                    </g>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white shadow-lg sticky top-0 z-50 w-full">
+        <div class="w-full px-4 sm:px-6 lg:px-8"> 
+            <div class="flex justify-between items-center py-4 md:justify-start md:space-x-10">
+                <div class="flex justify-start lg:w-0 lg:flex-1">
+                    <a href="#" class="flex items-center gap-3 group">
+                        <!-- Favicon link updated to encoded version -->
+                        <img class="h-16 w-16 sm:h-24 sm:w-24 rounded-lg object-cover transform group-hover:scale-105 transition duration-150" src="DRONE%20Logo.png" alt="Logo" onerror="this.onerror=null; this.src='https://placehold.co/100x100/4F46E5/ffffff?text=B7';">
+                        <span class="text-2xl font-extrabold text-indigo-600 group-hover:text-indigo-700 transition duration-150">Drone ARM B7</span>
+                    </a>
+                </div>
+                <nav class="hidden md:flex space-x-10">
+                    <a href="#portfolio" class="text-base font-medium text-gray-500 hover:text-gray-900 transition duration-150">Portfolio</a>
+                    <a href="#about" class="text-base font-medium text-gray-500 hover:text-gray-900 transition duration-150">About Me</a>
+                </nav>
+                <div class="hidden md:flex items-center justify-end md:flex-1 lg:w-0">
+                    <button onclick="toggleDonationModal()" class="ml-8 whitespace-nowrap inline-flex items-center justify-center px-4 py-2 border border-transparent rounded-xl shadow-lg text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 hover:scale-105 transition-transform">Investors</button>
+                </div>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="p-2 rounded-xl text-gray-400 hover:text-gray-500 hover:bg-gray-100">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden md:hidden">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <a href="#portfolio" class="block px-3 py-2 rounded-xl text-base font-medium text-gray-700 hover:bg-gray-50">Portfolio</a>
+                <a href="#about" class="block px-3 py-2 rounded-xl text-base font-medium text-gray-700 hover:bg-gray-50">About Me</a>
+                <button onclick="toggleDonationModal()" class="block w-full text-center px-3 py-2 mt-2 border border-transparent rounded-xl shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700">Investors</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <!-- Hero Section -->
+        <div class="relative overflow-hidden pt-10 sm:pt-16 lg:pt-24 bg-gray-50 w-full reveal">
+            <div class="w-full px-4 sm:px-6 lg:px-8">
+                <div class="lg:grid lg:grid-cols-12 lg:gap-8">
+                    <div class="sm:text-center md:max-w-4xl md:mx-auto lg:col-span-12 lg:text-center">
+                        <span class="inline-block px-3 py-1 text-sm font-semibold rounded-full text-indigo-700 bg-indigo-100 mb-4 shadow-md">Design & Innovation</span>
+                        <h1 class="mt-4 text-4xl tracking-tight font-extrabold text-gray-900 sm:mt-5 sm:text-6xl lg:mt-6 xl:text-7xl">
+                            <span class="block">Innovation with</span>
+                            <span class="block text-indigo-600">Drone ARM B7.</span>
+                        </h1>
+                        <p class="mt-6 text-xl text-gray-500 sm:mt-8">
+                            We are a creative agency specializing in media, photography, and cutting-edge digital experiences that captivate audiences and drive results.
+                        </p>
+                        <div class="mt-10 sm:flex sm:justify-center lg:justify-center">
+                            <div class="rounded-xl shadow-lg"><a href="#portfolio" class="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 md:py-4 md:text-lg md:px-10 transition hover:scale-[1.02]">See Our Work</a></div>
+                            <div class="mt-3 rounded-xl shadow-lg sm:mt-0 sm:ml-3"><a href="#contact" class="w-full flex items-center justify-center px-8 py-3 border border-2 border-indigo-200 text-base font-medium rounded-xl text-indigo-700 bg-white hover:bg-gray-50 md:py-4 md:text-lg md:px-10 transition hover:scale-[1.02]">Start a Project</a></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Portfolio -->
+        <section id="portfolio" class="py-20 bg-gray-50 w-full reveal">
+            <div class="w-full px-4 sm:px-6 lg:px-8">
+                <div class="text-center">
+                    <h2 class="text-base text-indigo-600 font-semibold tracking-wide uppercase">Our Recent Work</h2>
+                    <p class="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">Projects That Make a Statement</p>
+                </div>
+                <div class="mt-10 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+                    <!-- Project 1: Drone -->
+                    <div onclick="openProjectFolder('drone-hub')" class="bg-white rounded-2xl shadow-xl overflow-hidden group reveal cursor-pointer transform transition hover:-translate-y-2 hover:shadow-2xl">
+                        <div class="relative">
+                            <img class="w-full h-48 object-cover transition duration-500 group-hover:scale-105" src="https://placehold.co/600x400/4F46E5/FFFFFF?text=Drone+ARM" alt="Drone with Robotic Arm">
+                            <div class="absolute inset-0 bg-indigo-900 bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-300 flex items-center justify-center">
+                                <span class="opacity-0 group-hover:opacity-100 bg-white text-indigo-600 px-4 py-2 rounded-full font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all">View Project</span>
+                            </div>
+                        </div>
+                        <div class="p-6">
+                            <h4 class="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">DRONE with ARM</h4>
+                            <p class="text-sm text-indigo-600 mt-1">Robotics & Innovation</p>
+                            <p class="mt-2 text-gray-500 text-sm">An advanced aerial platform equipped with a robotic manipulator. Click to explore.</p>
+                        </div>
+                    </div>
+                    <!-- Project 2: VR -->
+                    <div class="bg-white rounded-2xl shadow-xl overflow-hidden group reveal">
+                        <img class="w-full h-48 object-cover transition duration-500 group-hover:scale-105" src="https://placehold.co/600x400/8B5CF6/FFFFFF?text=VR+Design" alt="VR Designing">
+                        <div class="p-6">
+                            <h4 class="text-lg font-bold text-gray-900">VR Designing</h4>
+                            <p class="text-sm text-indigo-600 mt-1">Immersive Experiences</p>
+                            <p class="mt-2 text-gray-500 text-sm">Creating hyper-realistic virtual environments for simulation.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- About -->
+        <section id="about" class="py-20 bg-white w-full reveal">
+            <div class="w-full px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-base text-indigo-600 font-semibold tracking-wide uppercase">Profile</h2>
+                    <p class="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">About Me</p>
+                </div>
+                <div class="bg-white rounded-2xl shadow-2xl overflow-hidden lg:flex transition hover:shadow-3xl">
+                    <div class="lg:w-1/3 relative bg-gray-200">
+                        <img class="h-96 w-full object-contain object-center lg:h-full lg:absolute lg:inset-0" src="my imageee.jpg" alt="Lalith Adithya A" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80';">
+                    </div>
+                    <div class="p-8 lg:w-2/3 lg:p-12 flex flex-col justify-center">
+                        <div class="uppercase tracking-wide text-sm text-indigo-600 font-bold mb-1">Owner & Founder</div>
+                        <h3 class="text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl mb-4">Lalith Adithya A</h3>
+                        <p class="text-lg text-gray-500 mb-6">I am a student at <strong>Madanapalle Institute of Technology and Science</strong>, currently pursuing my studies in the <strong>ECE Department</strong>.</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-gray-100 pt-6">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0"><div class="flex items-center justify-center h-10 w-10 rounded-full bg-indigo-100 text-indigo-600"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" /></svg></div></div>
+                                <div class="ml-4"><div class="text-sm font-medium text-gray-500">Roll No</div><div class="text-lg font-bold text-gray-900">23691A04B7</div></div>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0"><div class="flex items-center justify-center h-10 w-10 rounded-full bg-indigo-100 text-indigo-600"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg></div></div>
+                                <div class="ml-4"><div class="text-sm font-medium text-gray-500">Department</div><div class="text-lg font-bold text-gray-900">ECE</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Contact -->
+        <section id="contact" class="py-20 bg-gray-100 w-full reveal">
+            <div class="w-full px-4 sm:px-6 lg:px-8">
+                <div class="max-w-xl mx-auto lg:max-w-none">
+                    <div class="text-center">
+                        <h2 class="text-base text-indigo-600 font-semibold tracking-wide uppercase">Get in Touch</h2>
+                        <p class="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">Let's Build Something Great Together</p>
+                    </div>
+                    <div class="mt-12 bg-white p-8 rounded-3xl shadow-2xl">
+                        <form action="mailto:replace_this_with_your_email@example.com" method="POST" enctype="text/plain" class="grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-8">
+                            <div><label class="block text-sm font-medium text-gray-700">First name</label><input type="text" name="firstName" required class="mt-1 py-3 px-4 block w-full shadow-md border border-gray-300 rounded-xl"></div>
+                            <div><label class="block text-sm font-medium text-gray-700">Last name</label><input type="text" name="lastName" required class="mt-1 py-3 px-4 block w-full shadow-md border border-gray-300 rounded-xl"></div>
+                            <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">Email</label><input name="email" type="email" required class="mt-1 py-3 px-4 block w-full shadow-md border border-gray-300 rounded-xl"></div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700">Project Type</label>
+                                <div class="mt-1">
+                                    <select name="projectType" class="py-3 px-4 block w-full shadow-md focus:ring-indigo-500 focus:border-indigo-500 border border-gray-300 bg-white rounded-xl">
+                                        <option>Web Design</option>
+                                        <option>Photography</option>
+                                        <option>Content/Media</option>
+                                        <option>Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700">Message</label>
+                                <div class="mt-1"><textarea name="message" rows="4" required class="py-3 px-4 block w-full shadow-md focus:ring-indigo-500 focus:border-indigo-500 border border-gray-300 rounded-xl"></textarea></div>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <button type="submit" class="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent rounded-xl shadow-lg text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition hover:scale-[1.01]">Send Message</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Donation Modal -->
+    <div id="donation-modal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="toggleDonationModal()"></div>
+            <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <div class="text-center sm:text-left w-full">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">Invest in Innovation</h3>
+                        <div class="mt-6 grid grid-cols-2 gap-3">
+                            <button onclick="selectAmount(100)" class="w-full rounded-xl border border-gray-300 px-4 py-2 hover:bg-indigo-50 text-indigo-700">$100</button>
+                            <button onclick="selectAmount(200)" class="w-full rounded-xl border border-gray-300 px-4 py-2 hover:bg-indigo-50 text-indigo-700">$200</button>
+                        </div>
+                        <div class="mt-3"><button onclick="showCustomInput()" class="w-full rounded-xl border border-gray-300 px-4 py-2 hover:bg-gray-50">Custom Amount</button></div>
+                        <div id="custom-amount-container" class="mt-3 hidden"><input type="number" id="custom_price" class="block w-full border-gray-300 rounded-xl py-2 border pl-2" placeholder="0.00"></div>
+                        <div class="mt-4 p-2 bg-indigo-50 rounded-lg text-center hidden" id="selected-msg">Selected: <span class="font-bold text-indigo-700" id="display-amount">$0</span></div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button onclick="processDonation()" class="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 sm:ml-3 sm:w-auto">Donate</button>
+                    <button onclick="toggleDonationModal()" class="mt-3 w-full inline-flex justify-center rounded-xl border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- === FULL PAGE PROJECT FOLDERS === -->
+
+    <!-- 0. DRONE PROJECT HUB -->
+    <div id="drone-hub-page" class="full-page-view bg-gray-50">
+        <div class="page-content-wrapper">
+             <div class="flex justify-between items-center mb-10 border-b border-gray-200 pb-6">
+                <div><h1 class="text-4xl font-extrabold text-gray-900 tracking-tight">Drone with ARM</h1><p class="text-gray-500 mt-2">Select a folder to view detailed documentation.</p></div>
+                <button onclick="closeProjectFolder('drone-hub')" class="group flex items-center px-4 py-2 bg-white border border-gray-300 rounded-xl shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-red-600 transition-colors">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>Close Project
+                </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mt-12">
+                <!-- Folder 1: MATLAB -->
+                <div onclick="openProjectFolder('matlab')" class="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 cursor-pointer transform transition hover:-translate-y-2 hover:shadow-2xl hover:border-indigo-200 group">
+                    <div class="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-blue-600 transition-colors"><svg class="w-8 h-8 text-blue-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg></div>
+                    <h3 class="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">MATLAB Code</h3>
+                    <p class="text-gray-500 text-sm mt-2">Simulation algorithms.</p>
+                </div>
+                <!-- Folder 2: Implications -->
+                <div onclick="openProjectFolder('implications')" class="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 cursor-pointer transform transition hover:-translate-y-2 hover:shadow-2xl hover:border-indigo-200 group">
+                    <div class="w-16 h-16 bg-purple-100 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-purple-600 transition-colors"><svg class="w-8 h-8 text-purple-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg></div>
+                    <h3 class="text-xl font-bold text-gray-900 group-hover:text-purple-600 transition-colors">Implications</h3>
+                    <p class="text-gray-500 text-sm mt-2">Quadcopter dynamics.</p>
+                </div>
+                <!-- Folder 3: Industry -->
+                <div onclick="openProjectFolder('industry')" class="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 cursor-pointer transform transition hover:-translate-y-2 hover:shadow-2xl hover:border-indigo-200 group">
+                    <div class="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-green-600 transition-colors"><svg class="w-8 h-8 text-green-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg></div>
+                    <h3 class="text-xl font-bold text-gray-900 group-hover:text-green-600 transition-colors">Industry Delivery</h3>
+                    <p class="text-gray-500 text-sm mt-2">Logistics & Use Cases.</p>
+                </div>
+                <!-- Folder 4: 3D View -->
+                <div onclick="openProjectFolder('3d-view')" class="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 cursor-pointer transform transition hover:-translate-y-2 hover:shadow-2xl hover:border-red-200 group">
+                    <div class="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-red-600 transition-colors"><svg class="w-8 h-8 text-red-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" /></svg></div>
+                    <h3 class="text-xl font-bold text-gray-900 group-hover:text-red-600 transition-colors">3D Model View</h3>
+                    <p class="text-gray-500 text-sm mt-2">Interactive 3D Simulation.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page 1: MATLAB Code -->
+    <div id="matlab-page" class="full-page-view">
+        <div class="page-content-wrapper">
+            <div class="flex justify-between items-center mb-10 border-b border-gray-200 pb-6">
+                <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight">MATLAB Simulation Code</h1>
+                <button onclick="closeProjectFolder('matlab')" class="group flex items-center px-4 py-2 bg-white border border-gray-300 rounded-xl shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                    <svg class="w-5 h-5 mr-2 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>Back to Hub
+                </button>
+            </div>
+            <div class="prose prose-lg prose-indigo text-gray-500 max-w-none">
+                <p class="text-xl text-gray-600 mb-8">This module contains the core simulation algorithms developed to ensure the stability of the drone.</p>
+                <div class="bg-gray-900 rounded-2xl p-6 shadow-2xl code-block relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-2 text-xs text-gray-500 font-mono">Quadcopter_Dynamics.m</div>
+                    
+                    <!-- PASTE YOUR CODE BELOW THIS LINE -->
+                    <pre class="font-mono text-sm text-green-400 overflow-x-auto">
+% Quadcopter Dynamics Simulation (Basic)
+% By: [Your Name]
+% Date: [Today's Date]
+
+
+clear; clc; close all;
+
+
+%% Parameters
+m = 1;           % Mass (kg)
+g = 9.81;        % Gravity (m/s^2)
+L = 0.23;        % Length (m) - distance from center to rotor
+I = diag([0.005, 0.005, 0.009]); % Inertia matrix (kg.m^2)
+dt = 0.01;       % Time step (s)
+sim_time = 10;   % Simulation time (s)
+
+
+% Motor thrust coefficients
+kF = 6.11e-8;    % Thrust coefficient
+kM = 1.5e-9;     % Moment coefficient
+
+
+%% Initialization
+state = zeros(12,1); % [x y z vx vy vz phi theta psi p q r]
+state(3) = 0; % initial altitude
+
+
+trajectory = zeros(sim_time/dt, 12);
+
+
+%% Controller (Setpoints)
+z_ref = 2; % target altitude
+phi_ref = 0;
+theta_ref = 0;
+psi_ref = 0;
+
+
+%% Simulation Loop
+for i = 1:length(trajectory)
+    % Extract state
+    x = state(1); y = state(2); z = state(3);
+    vx = state(4); vy = state(5); vz = state(6);
+    phi = state(7); theta = state(8); psi = state(9);
+    p = state(10); q = state(11); r = state(12);
+
+
+    % Simple PD controller for vertical position
+    kp_z = 20; kd_z = 8;
+    u1 = m*(g + kp_z*(z_ref - z) - kd_z*vz);  % Thrust command (N)
+
+
+    % Simple PD for roll, pitch, yaw
+    kp_ang = 10; kd_ang = 3;
+    u2 = kp_ang*(phi_ref - phi) - kd_ang*p;   % tau_phi
+    u3 = kp_ang*(theta_ref - theta) - kd_ang*q; % tau_theta
+    u4 = kp_ang*(psi_ref - psi) - kd_ang*r;   % tau_psi
+
+
+    % Motor mixing (simplified)
+    F = [u1; u2; u3; u4];
+
+
+    % Calculate accelerations
+    acc = [0;0;-(g)] + (u1/m) .* ([sin(theta); -sin(phi); cos(phi)*cos(theta)]);
+    omega_dot = I \ ([u2; u3; u4] - cross([p;q;r], I*[p;q;r]));
+
+
+    % Integrate equations of motion
+    state(1:3) = state(1:3) + state(4:6)*dt;          % position
+    state(4:6) = state(4:6) + acc*dt;                 % velocity
+    state(7:9) = state(7:9) + [p;q;r]*dt;             % Euler angles
+    state(10:12) = state(10:12) + omega_dot*dt;       % angular rates
+
+
+    % Store for plotting
+    trajectory(i,:) = state';
+end
+
+
+%% Plot Results
+time_vec = dt*(0:length(trajectory)-1);
+figure;
+subplot(3,1,1); plot(time_vec, trajectory(:,1:3)); title('Position'); legend('x','y','z');
+subplot(3,1,2); plot(time_vec, trajectory(:,7:9)); title('Euler Angles (rad)'); legend('\phi','\theta','\psi');
+subplot(3,1,3); plot(time_vec, trajectory(:,4:6)); title('Velocity (m/s)'); legend('vx','vy','vz');
+xlabel('Time (s)');
+                    </pre>
+                    <!-- PASTE YOUR CODE ABOVE THIS LINE -->
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page 2: Implications -->
+    <div id="implications-page" class="full-page-view">
+        <div class="page-content-wrapper">
+             <div class="flex justify-between items-center mb-10 border-b border-gray-200 pb-6">
+                <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight">Implications to Quadcopter</h1>
+                <button onclick="closeProjectFolder('implications')" class="group flex items-center px-4 py-2 bg-white border border-gray-300 rounded-xl shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                    <svg class="w-5 h-5 mr-2 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>Back to Hub
+                </button>
+            </div>
+            <div class="prose prose-lg text-gray-500 max-w-none">
+                <p class="text-xl text-gray-600 mb-8">Integrating a robotic manipulator onto a standard quadcopter frame introduces significant aerodynamic and mechanical challenges.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-100"><h3 class="text-xl font-bold text-gray-900 mb-2">Power Consumption</h3><p class="text-gray-500 text-sm">Increased power draw by 15% due to payload.</p></div>
+                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-100"><h3 class="text-xl font-bold text-gray-900 mb-2">Aerodynamics</h3><p class="text-gray-500 text-sm">Streamlined fairing reduced drag by 0.08.</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page 3: Industry Delivery -->
+    <div id="industry-page" class="full-page-view">
+        <div class="page-content-wrapper">
+             <div class="flex justify-between items-center mb-10 border-b border-gray-200 pb-6">
+                <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight">Delivering to Industry</h1>
+                <button onclick="closeProjectFolder('industry')" class="group flex items-center px-4 py-2 bg-white border border-gray-300 rounded-xl shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors">
+                    <svg class="w-5 h-5 mr-2 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>Back to Hub
+                </button>
+            </div>
+            <div class="prose prose-lg text-gray-500 max-w-none">
+                <h2 class="text-3xl font-bold text-gray-900 mb-4">The Future of Last-Mile Logistics</h2>
+                <p class="text-gray-600">The "Drone with ARM" project moves beyond simple observation to active interaction.</p>
+                <ul class="list-disc pl-5 mt-4 space-y-2 text-gray-500">
+                    <li><strong>Autonomous Delivery:</strong> Drop-off without landing.</li>
+                    <li><strong>Hazardous Ops:</strong> Sample collection in toxic zones.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page 4: 3D View -->
+    <div id="3d-view-page" class="full-page-view bg-gray-900">
+        <div class="page-content-wrapper" style="max-width: 100%; padding: 2rem;">
+             <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-4">
+                <h1 class="text-2xl font-extrabold text-white tracking-tight">Interactive 3D Model</h1>
+                <button onclick="closeProjectFolder('3d-view')" class="group flex items-center px-4 py-2 bg-gray-800 border border-gray-600 rounded-xl shadow-sm text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>Back to Hub
+                </button>
+            </div>
+            
+            <div id="three-canvas-container">
+                <div id="model-loader">Initializing Simulation...</div>
+                <!-- Info Panel overlay -->
+                <div id="drone-info-panel">
+                    <h3 id="info-title" class="text-lg font-bold text-indigo-400 mb-1">Component</h3>
+                    <p id="info-desc" class="text-sm text-gray-300">Description goes here.</p>
+                </div>
+            </div>
+            
+            <p class="text-center text-gray-400 mt-4 text-sm">
+                <span class="text-indigo-400 font-bold">CLICK</span> on any part to identify it • Drag to rotate • Scroll to zoom
+            </p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // ... (Previous Scripts: Menu, Intro, Donation, Scroll) ...
+        const menuButton = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+        menuButton.addEventListener('click', () => { mobileMenu.classList.toggle('hidden'); });
+
+        window.addEventListener('load', () => { setTimeout(() => { document.getElementById('intro-screen').classList.add('hidden-screen'); }, 1000); });
+
+        // Donation Logic (Kept same)
+        let selectedAmount = 0;
+        function toggleDonationModal() { const modal = document.getElementById('donation-modal'); modal.classList.toggle('hidden'); }
+        function selectAmount(amount) { selectedAmount = amount; document.getElementById('custom-amount-container').classList.add('hidden'); document.getElementById('selected-msg').classList.remove('hidden'); document.getElementById('display-amount').textContent = '$' + amount; }
+        function showCustomInput() { document.getElementById('custom-amount-container').classList.remove('hidden'); document.getElementById('custom_price').focus(); selectedAmount = 'custom'; document.getElementById('selected-msg').classList.remove('hidden'); document.getElementById('display-amount').textContent = 'Custom Amount'; }
+        function updateDisplay(text) { document.getElementById('selected-msg').classList.remove('hidden'); document.getElementById('display-amount').textContent = text; }
+        function processDonation() { let finalAmount = selectedAmount; if (selectedAmount === 'custom') { const inputVal = document.getElementById('custom_price').value; if (!inputVal || inputVal <= 0) { alert('Please enter a valid amount.'); return; } finalAmount = inputVal; } if (finalAmount === 0) { alert('Please select an amount.'); return; } alert(`Thank you for your generous investment of $${finalAmount}!`); toggleDonationModal(); }
+
+        // Project Folder Logic
+        function openProjectFolder(folderId) {
+            const page = document.getElementById(folderId + '-page');
+            if (page) {
+                page.classList.add('active-page');
+                document.body.style.overflow = 'hidden';
+                if (folderId === '3d-view') setTimeout(initThreeJS, 500); // Delay for transition
+            }
+        }
+
+        function closeProjectFolder(folderId) {
+            const page = document.getElementById(folderId + '-page');
+            if (page) {
+                page.classList.remove('active-page');
+                document.body.style.overflow = '';
+                if (folderId === '3d-view') stopThreeJS();
+            }
+        }
+
+        // --- ENHANCED THREE.JS LOGIC ---
+        let scene, camera, renderer, droneGroup, particles;
+        let animationId;
+        let raycaster, mouse;
+        const clickObjects = []; // Store objects that can be clicked
+
+        function initThreeJS() {
+            const container = document.getElementById('three-canvas-container');
+            if (container.children.length > 2) return; // Already init (loader + panel exist)
+
+            document.getElementById('model-loader').style.display = 'none';
+
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.Fog(0x0f172a, 5, 15);
+
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+            camera.position.set(3, 2, 4);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(width, height);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(5, 10, 5);
+            dirLight.castShadow = true;
+            scene.add(dirLight);
+
+            const blueLight = new THREE.PointLight(0x4F46E5, 2, 10);
+            blueLight.position.set(0, -2, 0);
+            scene.add(blueLight);
+
+            // --- BUILD REALISTIC DRONE ---
+            droneGroup = new THREE.Group();
+
+            // Materials
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.3, metalness: 0.8 }); // Dark Metal
+            const armMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.5 }); // Carbon Fiber look
+            const motorMat = new THREE.MeshStandardMaterial({ color: 0x9CA3AF, metalness: 1.0 }); // Silver
+            // Updated Prop Material to be solid and dark
+            const propMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2 }); 
+            const robotArmMat = new THREE.MeshStandardMaterial({ color: 0xD1D5DB }); // Steel
+            const parcelMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B }); // Orange Box
+
+            // 1. Fuselage (Central Body)
+            const fuselage = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.3, 1.2), bodyMat);
+            fuselage.userData = { name: "Main Fuselage", desc: "Houses the flight controller, battery, and AI processing unit." };
+            droneGroup.add(fuselage);
+
+            // 2. Arms & Motors (X Configuration)
+            const armPositions = [
+                {x: 1, z: 1, rot: Math.PI/4}, 
+                {x: -1, z: -1, rot: Math.PI/4},
+                {x: 1, z: -1, rot: -Math.PI/4}, 
+                {x: -1, z: 1, rot: -Math.PI/4}
+            ];
+
+            armPositions.forEach(pos => {
+                // Arm Bar
+                const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.5), armMat);
+                arm.position.set(0, 0, 0);
+                arm.rotation.z = Math.PI / 2;
+                arm.rotation.y = pos.rot;
+                arm.userData = { name: "Carbon Fiber Arm", desc: "Lightweight structural support minimizing vibration." };
+                droneGroup.add(arm);
+
+                // Motor Housing
+                const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.3), motorMat);
+                motor.position.set(pos.x, 0.15, pos.z);
+                motor.userData = { name: "Brushless Motor", desc: "High-torque motor (900KV) for heavy payload lifting." };
+                droneGroup.add(motor);
+
+                // --- REALISTIC PROPELLER (2-Blade) ---
+                const propGroup = new THREE.Group();
+                propGroup.position.set(pos.x, 0.32, pos.z);
+                propGroup.isPropeller = true; // Tag for animation
+                propGroup.userData = { name: "Carbon Propeller", desc: "18-inch carbon fiber blades for maximum lift." };
+                
+                // The Blade (Long thin box)
+                // Length 1.8 ensures no overlap (distance between motors is 2.0)
+                const bladeGeo = new THREE.BoxGeometry(1.8, 0.015, 0.15); 
+                const blade = new THREE.Mesh(bladeGeo, propMat);
+                propGroup.add(blade);
+                
+                // The Hub Cap (Center piece)
+                const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.08), motorMat);
+                cap.position.y = 0.02;
+                propGroup.add(cap);
+
+                // Prop Guard (Torus)
+                const guard = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.02, 16, 100), new THREE.MeshStandardMaterial({color: 0xef4444}));
+                guard.rotation.x = Math.PI / 2;
+                guard.position.set(pos.x, 0.15, pos.z);
+                guard.userData = { name: "Prop Guard", desc: "Safety ring for indoor and close-proximity operations." };
+                droneGroup.add(guard);
+                
+                droneGroup.add(propGroup);
+            });
+
+            // 3. Landing Gear (Skids)
+            const skidGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.5);
+            const legGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.5);
+            
+            // Left Skid
+            const skidL = new THREE.Mesh(skidGeo, armMat);
+            skidL.rotation.x = Math.PI / 2;
+            skidL.position.set(0.5, -0.5, 0);
+            droneGroup.add(skidL);
+            
+            const legL1 = new THREE.Mesh(legGeo, armMat);
+            legL1.position.set(0.5, -0.25, 0.5);
+            droneGroup.add(legL1);
+            
+            const legL2 = new THREE.Mesh(legGeo, armMat);
+            legL2.position.set(0.5, -0.25, -0.5);
+            droneGroup.add(legL2);
+
+            // Right Skid
+            const skidR = skidL.clone();
+            skidR.position.set(-0.5, -0.5, 0);
+            droneGroup.add(skidR);
+            const legR1 = legL1.clone();
+            legR1.position.set(-0.5, -0.25, 0.5);
+            droneGroup.add(legR1);
+            const legR2 = legL2.clone();
+            legR2.position.set(-0.5, -0.25, -0.5);
+            droneGroup.add(legR2);
+
+
+            // 4. DUAL ROBOTIC ARMS & PARCEL
+            // Pivot Base
+            const base = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.4), robotArmMat);
+            base.position.y = -0.2;
+            droneGroup.add(base);
+
+            // Left Arm
+            const armL = new THREE.Group();
+            armL.position.set(0.2, -0.25, 0);
+            const upperL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), robotArmMat);
+            upperL.position.y = -0.3;
+            upperL.rotation.z = -0.2;
+            armL.add(upperL);
+            const clawL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.4), new THREE.MeshStandardMaterial({color: 0x000}));
+            clawL.position.set(0.1, -0.6, 0);
+            armL.add(clawL);
+            armL.userData = { name: "Robotic Manipulator (L)", desc: "Servo-driven gripper arm for securing cargo." };
+            droneGroup.add(armL);
+
+            // Right Arm
+            const armR = new THREE.Group();
+            armR.position.set(-0.2, -0.25, 0);
+            const upperR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), robotArmMat);
+            upperR.position.y = -0.3;
+            upperR.rotation.z = 0.2;
+            armR.add(upperR);
+            const clawR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.4), new THREE.MeshStandardMaterial({color: 0x000}));
+            clawR.position.set(-0.1, -0.6, 0);
+            armR.add(clawR);
+            armR.userData = { name: "Robotic Manipulator (R)", desc: "Servo-driven gripper arm for securing cargo." };
+            droneGroup.add(armR);
+
+            // The Parcel
+            const parcel = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.6), parcelMat);
+            parcel.position.set(0, -0.7, 0);
+            parcel.userData = { name: "Payload", desc: "Standard 2kg industrial package unit." };
+            droneGroup.add(parcel);
+
+            scene.add(droneGroup);
+
+            // --- PARTICLE SYSTEM (AIR BLOWING) ---
+            const particleCount = 300;
+            const particlesGeo = new THREE.BufferGeometry();
+            const posArray = new Float32Array(particleCount * 3);
+            
+            for(let i=0; i < particleCount * 3; i+=3) {
+                // Spawn under motors
+                const corner = Math.floor(Math.random() * 4); // 0 to 3
+                const spread = 0.3; // Increased spread
+                let cx, cz;
+                if(corner===0) { cx=1; cz=1; }
+                else if(corner===1) { cx=-1; cz=-1; }
+                else if(corner===2) { cx=1; cz=-1; }
+                else { cx=-1; cz=1; }
+
+                posArray[i] = cx + (Math.random()-0.5)*spread;
+                posArray[i+1] = (Math.random() * 0.5) - 0.5; // Start height variation
+                posArray[i+2] = cz + (Math.random()-0.5)*spread;
+            }
+            particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            const particleMat = new THREE.PointsMaterial({
+                size: 0.08,
+                color: 0xa5f3fc,
+                transparent: true,
+                opacity: 0.5
+            });
+            particles = new THREE.Points(particlesGeo, particleMat);
+            droneGroup.add(particles);
+
+
+            // Interaction Setup
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            container.addEventListener('click', onCanvasClick);
+            container.addEventListener('mousemove', onMouseMove); // For dragging rotation
+
+            animate();
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+
+            // 1. Spin Props
+            droneGroup.children.forEach(child => {
+                if(child.isPropeller) child.rotation.y += 0.8; // Fast spin
+            });
+
+            // 2. Animate Air Particles
+            if(particles) {
+                const positions = particles.geometry.attributes.position.array;
+                for(let i=1; i < positions.length; i+=3) {
+                    positions[i] -= 0.2; // Fall down fast
+                    // Reset if too low
+                    if(positions[i] < -4) {
+                        positions[i] = 0.2; 
+                    }
+                }
+                particles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // 3. Hover Motion
+            droneGroup.position.y = Math.sin(Date.now() * 0.002) * 0.1;
+
+            renderer.render(scene, camera);
+        }
+
+        // --- INTERACTION LOGIC ---
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        function onMouseMove(e) {
+            // Drag Rotation Logic
+            if(e.buttons === 1) { // Left click held
+                const deltaMove = { x: e.offsetX - previousMousePosition.x, y: e.offsetY - previousMousePosition.y };
+                droneGroup.rotation.y += deltaMove.x * 0.01;
+                droneGroup.rotation.x += deltaMove.y * 0.01;
+            }
+            previousMousePosition = { x: e.offsetX, y: e.offsetY };
+        }
+
+        function onCanvasClick(event) {
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            // Raycast against all clickable parts
+            // Note: clickObjects is a flat array of meshes we pushed earlier
+            // We need to check intersections recursively if objects are in groups, 
+            // but here we added them to clickObjects manually.
+            // Actually, raycasting against the whole group is easier.
+            const intersects = raycaster.intersectObjects(droneGroup.children, true);
+
+            const infoPanel = document.getElementById('drone-info-panel');
+            const infoTitle = document.getElementById('info-title');
+            const infoDesc = document.getElementById('info-desc');
+
+            if (intersects.length > 0) {
+                // Find the first object that has userData with a name
+                let target = intersects[0].object;
+                
+                // Traverse up if the clicked part is a child of a named group (like the arm)
+                while(target && !target.userData.name && target.parent) {
+                    target = target.parent;
+                }
+
+                if (target && target.userData.name) {
+                    infoTitle.textContent = target.userData.name;
+                    infoDesc.textContent = target.userData.desc;
+                    infoPanel.classList.add('visible');
+                } else {
+                    infoPanel.classList.remove('visible');
+                }
+            } else {
+                infoPanel.classList.remove('visible');
+            }
+        }
+
+        function stopThreeJS() {
+            if (animationId) cancelAnimationFrame(animationId);
+        }
+
+        // Scroll Observer
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => { if (entry.isIntersecting) entry.target.classList.add('active'); });
+        });
+        document.querySelectorAll('.reveal').forEach((el) => observer.observe(el));
+    </script>
+</body>
+</html>
